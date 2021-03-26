@@ -1,0 +1,590 @@
+---
+title: "Taller de Clasificación I"
+date: "`r Sys.Date()`"
+author: " Lizeth Moreno"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+```{r warning=FALSE, include=FALSE}
+library(readxl)
+library(tidyverse)
+library(magrittr)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(caTools)
+library(randomForest)
+
+
+
+library(outliers)
+library(lattice) #para gr?ficos
+library(reshape2) #para dar formato a la base de datos
+```
+
+```{r echo=FALSE}
+Data <- read_excel("Base/base.xlsx")
+#View(Data)
+
+Data <- Data %>% mutate(impago=factor(impago),
+                        educ=factor(educ,ordered = T,labels = c(1,2,3,4,5)),
+                        sexo = factor(sexo))
+#view(Data)
+
+df <- Data %>% dplyr::filter((is.na(Data$impago)))# Datos para predecir
+
+Data <- Data %>% dplyr::filter(!(is.na(Data$impago)))# Datos sin NA
+
+## Creando Sets de Entrenamiento  y Prueba
+
+#Estratificación de la muestra 
+#str(Data)
+
+```
+
+# Introducción 
+El sistema financiero a nivel mundial ha presentado como una de sus principales características la toma y gestión de riesgos, puesto que, en cada una de las operaciones que cumplen las instituciones se encuentra de forma implícita o explícita la incertidumbre.
+Una de las actividades financieras sujetas a riesgo es el otorgamiento de créditos. Por lo tanto, las entidades encargadas de su manejo deben establecer un procedimiento de evaluación de clientes, con la profundidad necesaria para identificar con anticipación a los clientes tanto actuales como potenciales que se considerarían como malos o buenos pagadores. (Cardona, 2004)
+En la actualidad se destaca el manejo del riesgo en las entidades financieras empleando metodologías apoyadas en procesos estadísticos, tales como los árboles de decisión entre otros. Según Rincón y Torres (2015), los árboles de decisión son métodos representa de forma gráfica y analítica todos los eventos (sucesos) que pueden surgir a partir de una decisión asumida en cierto momento. Esta metodología permite realizar una óptima administración del riesgo de crédito, para controlarlo y para mantener provisiones en caso de pérdidas por el no pago de obligaciones. Además, es considerado como una técnica de fácil uso y eficiente en sus resultados, lo que permite realizar estrategias comerciales para que no se presenten pérdidas, y los esfuerzos se enfoquen en los grupos de clientes más rentables para la entidad financiera.
+
+# Descripción del Problema
+
+El otorgamiento de créditos es una de las actividades de mayor demanda dentro del sistema financiero, puesto que promueve especialmente al sector empresarial de pequeña y media escala. Sin embargo, en este proceso de concesión del crédito, existe un factor importante relacionado a la incertidumbre en el incumplimiento de las responsabilidades de pago de los individuos sujetos a créditos, o también conocido como el riesgo de crédito y cartera. Dicho riesgo genera pérdidas incalculables en las entidades financieras, puesto que reduce considerablemente la capacidad de estas instituciones para cubrir económicamente el resto de las operaciones financieras que se realizan. Además, se ha determinado que existen un conjunto de elementos que inciden en la capacidad de pago de los usuarios y/o clientes, destacando las más relevantes como: bajo nivel de educación, bajo nivel de ingresos e informalidad laboral por parte del cliente, y barreras de entrada al sistema financiero como altas tasas de interés y transacción.
+
+# Descripción del Control
+
+## Descripción Breve
+
+Identificar y clasificar al conjunto de clientes de una institución financiera según su capacidad o cumplimiento en el pago de sus obligaciones, en base al análisis de las características más influyentes para determinar si un cliente es buen o mal pagador.
+
+##	Descripción Larga 
+
+Implementación de la metodología de “Árboles de decisión” y modelos de regresión logística (LOGIT) para la clasificación de la población de individuos en base a un conjunto de atributos o características que influyen en su probabilidad de pertenecer al grupo de Buenos Pagadores o al de Malos Pagadores. Además, se realizará una predicción y análisis de los resultados en ambos procesos para determinar la precisión y validez de estos modelos, resultados que serán contrastados con las hipótesis de los atributos que según la literatura son los más influyentes. Este apartado es complementado con un análisis descriptivo y estadístico de las variables a nivel cualitativo y cuantitativo que inciden en la capacidad que tienen los clientes para cumplir o no con sus obligaciones crediticias. 
+
+# Fuentes de Información involucradas:
+ 
+## Fuente 1:
+
+ - Nombre: SET_DATOS
+ - Contenido: Registros hipotéticos sobre la información financiera y demográfica de 850 clientes anteriores y posibles clientes.
+ - Histórico que se va a usar: Indefinido
+
+# Descripción de las Hipótesis sobre la problemática
+
+1) En el presente trabajo se plantea: Al momento de pedir un crédito de consumo en una entidad bancaria, las mujeres tienden a ser mejores pagadoras que los hombres.
+
+2) Se pretende observar si al pedir un crédito bancario la tasa de deuda sobre el ingreso influye la toma de decisión.
+
+3) El nivel de educación de los clientes de la entdidad bancaria, influye al momento de los pagos mensuales, es decir, si el nivel de educación afecta al riesgo crediticio de la entidad bancaria.
+
+4) El hecho de que un cliente de la entidad finaciera haya vivido un largo  tiempo en una misma dirección, influye para que este sea un buen o mal pagador.
+
+
+
+# Análisis estadístico descriptivo
+Ahora, se realiza un análisis estadístico descriptivo de los datos  a fin de indentificar sus principales características mediante un número reducido de gráficos o números. 
+
+
+
+
+
+## Variable explicada o variable dependiente:
+
+La variable explicada o variable dependiente, será *impago*, que es una variable de tipo nominal dónde toma valores de; 0 si el cliente NO registra impagos anteriores en la institución financiera y 1 si el cliente SI registra impagos anteriores en la institución financiera.
+
+## Variables Independientes
+Las variables independientes explicarán y determinarán la variable explicada y se tomarán en cuenta 8 variables disponibles en la base de datos, tales como:
+
+- edad: Edad en años en la cual se encuentra el cliente.
+- educ: Nivel de educación del cliente: No completó el bachillerato, Título de Bachiller, Superiores iniciados, Título Superior, Título de Post-grado.
+- empleo: Años que el cliente lleva con la empresa actual.
+- dirección: años que el cliente tiene en la dirección actual.
+- ingresos: Ingresos familiares que registra el cliente en miles de dólares.
+- deudaingr: Tasa de deuda sobre ingresos, es el cálculo de la proporción entre el total del monto edudado que posee el cliente con el total de sus ingresos.
+- deudacred: Deuda que registra el cliente en la tarjeta de crédito en miles de dólares.
+
+- deudaotro: Otras deudas que registra el cliente en miles de dólares.
+
+Se tiene que de los 700 registros de clientes, con respecto a las medidas de tendencia central, el promedio de la edad de los clientes es de 34.86 con una dispersión de los datos con respecto a la media de 7.997342. Para empleo el promedio de años que lleva en la empresa es de 8.389 con una dispersión de los datos con respecto a la media de 6.658039. Para la dirección el promedio de años que el cliente tiene en la dirección actual es de 8.279 con una dispersión de 6.824877. De la misma forma para ingresos se tiene un promedio de  45.6, de deudaingr 10.26 , deudacred  1.5536  y finalmente para deudaotro el promedio es 3.05821. con sus respectivos valores de dispersión presentados a continuación.
+
+
+
+
+
+
+Ahora se procede a mostrar histogramas respecto a la variable sexo que nos permitan apreciar visualmente  conclusiones referentes a los clientes. 
+
+```{r echo=FALSE}
+par(mfrow=c(1,2))
+ggplot(data  = Data) +
+  geom_bar(mapping = aes(x = edad, colour = sexo))
+```
+
+Lo que permite concluir que la Entidad financiera mantiene más clientes de género Masculino con edad promedio de 30 a 40 años.
+
+```{r echo=FALSE}
+ggplot(data  = Data) +
+  geom_bar(mapping = aes(x = empleo, colour = sexo))
+```
+
+La entidad financiera tien más  cliente de género másculino que mantienen más años en sus empresas actuales.
+
+```{r echo=FALSE}
+ggplot(data  = Data) +
+  geom_bar(mapping = aes(x = direccion, colour = sexo))
+```
+
+De igual forma existen más clientes de género másculino que mantienen la misma información de años en su dirección domiciliaria.
+
+```{r echo=FALSE}
+ggplot(data  = Data) +
+  geom_bar(mapping = aes(x = ingresos, colour = sexo))
+ggplot(data  = Data) +
+  geom_bar(mapping = aes(x = deudaingr, colour = sexo))
+```
+
+Por otro lado los ingresos y deudas de los clientes se mantienen a nivel con respecto al género.
+
+### Coefiente de correlaciones
+
+En un análisis eploratorio bidimensional primero calcularemos el coeficiente de correlación lineal para las variables edad, educación, empleo, dirección, ingresos, deudaingr, deudacred, deudaotro, sexo así como sus correspondientes coeficientes de correlación a nivel de género.
+
+```{r echo=FALSE}
+cor(Data$edad,Data$empleo)
+
+
+
+#cor(edad[Sex=="F"],empleo[Sex=="F"])
+#cor(empleo[Sex=="M"],edad[Sex=="M"])
+#cor(edad[Sex=="F"],direccion[Sex=="F"])
+#cor(edad[Sex=="F"],ingresos[Sex=="F"])
+#cor(edad[Sex=="F"],deudaingr[Sex=="F"])
+```
+
+El coeficiente de correlación para las variables edad  y empleo es de 0.5364968 que indica una relación positiva, es decir directamente proporcional. Las otras variables también mantienen una correlación positiva lo que implica que todas son directamente proporcionales.
+
+
+La siguientes gráficas de dispersión  permite también analizar las variables directamente proporcionales.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = Data, mapping = aes(x = empleo, y = ingresos)) +
+  geom_point() +
+  geom_smooth()
+
+
+
+ggplot(data = Data, mapping = aes(x = edad, y = ingresos)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = Data, mapping = aes(x = edad, y = empleo)) +
+  geom_point() +
+  geom_smooth()
+```
+
+Lo que se concluye que la variable empleo e ingresos mantienen una correlación positiva, es decir, a medida que el número de años que un cliente lleva en una empresa crece también crecen sus ingresos familiares de igual forma para edad e ingresos y edad con empleo.
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(data  = Data) +
+  geom_point(mapping = aes(x = Data$ingresos, y = Data$empleo, color = Data$educ))
+```
+
+La gráfica anterior  muestra la relación que existe entre el Nivel de educación del cliente con su empleo y sus ingresos, es decir, un cliente será un candidato financiero bueno mientras mantenga un nivel de educación alto con ingresos en miles de dolares igualmente alto.
+
+
+
+### Histogramas
+
+```{r echo=FALSE, warning=FALSE}
+
+ggplot(data  = Data) +
+  geom_bar(mapping = aes(x = empleo, colour = educ))
+```
+
+La gráfica anterior muestra los años que el cliente lleva en su empresa actual con su nivel de educación dónde 1 representa que no completó el bachillerato, 2 tiene título de bachiller, 3 superiores inicacos, 4 título superior y 5 tiene título de post-grado.
+
+
+
+```{r echo=FALSE, warning=FALSE}
+
+ggplot(data = Data) +
+  geom_bar(mapping = aes(x = Data$educ, colour = impago))
+
+```
+
+Cuando se realiza el gráfico anterior de barras se puede observar que los usuarios con un nivel de educación alto son buenos pagadores.
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(data = Data) +
+  geom_bar(mapping = aes(x = Data$ingresos, colour = impago))
+
+```
+
+Esta gráfica indica que los ingresos en miles de dólares no implica que un cliente será o no un buen pagador. 
+
+
+```{r echo=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+ggplot(data = Data) +
+ aes(x = empleo, colour = impago) +
+ geom_bar() +
+ scale_fill_hue() +
+ labs(x = "empleo") +
+ theme_minimal()
+
+```
+
+Como se puede notar es mayor la cantidad de malos pagadores que la cantidad de buenos pagadores con respecto a los años que el cliente lleva con su empresa actual.
+
+```{r echo=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+ggplot(data = Data) +
+  geom_bar(mapping = aes(x = Data$sexo, fill = impago))
+ggplot(data = Data) +
+  geom_bar(mapping = aes(x = Data$edad, colour = impago))
+```
+
+Finalmente se concluye que los clientes de género femenino efectivamente son mejor pagadares que los clientes de género masculino mientras que las personas con edad promedio de 30 y 40 años no son buenos pagadores.
+
+
+### Gráfico de caja y bigotes
+
+Ahora, explorará a nivel de género del cliente para obervar si se mantiene los mismos comportamientos sobre la distribución de cada variable, para esto se utilizará diagramas de cajas y bigotes.
+
+
+
+```{r echo=FALSE}
+
+NewData <- Data %>%
+  filter(impago!= "NA") %>% 
+  mutate(impago=factor(impago, labels = c("no","si"),levels = c(1,0)),
+         educ=factor(educ,ordered = T,labels = c(1,2,3,4,5)),
+         sexo = factor(sexo)
+         ) %>% 
+  select(impago,everything())
+###--------------BOXPLOT -----------------
+s2 <- NewData %>%  
+  filter(NewData$impago=="si") %>% 
+  select(sexo, ingresos,empleo,deudaingr, deudacred)
+
+###-------------------------------
+mgrup2 <- melt(s2,id.vars = c("sexo"))
+###-------------------------------
+ggplot(mgrup2,aes(x=factor(sexo),y=value))+
+  geom_boxplot(aes(fill=variable), fill="#00FFFF", color="blue")+
+  facet_wrap(~variable,scales = "free")+
+  geom_jitter(width=0.1,alpha=0.2,aes(color=variable))+
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 90, hjust = 1))+
+labs(title="Banco",
+     subtitle = "Movimiento de los Buenos Pagadores segun el sexo",
+     caption = "Fuente: Banco")
+
+
+
+```
+
+
+```{r echo=FALSE}
+###--------------BOXPLOT -----------------
+s3 <- NewData %>%  
+  filter(NewData$impago=="si") %>% 
+  select(educ, edad, empleo, direccion)
+
+###-------------------------------
+mgrup3 <- melt(s3,id.vars = c("educ"))
+###-------------------------------
+ggplot(mgrup3,aes(x=factor(educ),y=value))+
+  geom_boxplot(aes(fill=variable), fill="#00FFFF", color="blue")+
+  facet_wrap(~variable,scales = "free")+
+  geom_jitter(width=0.1,alpha=0.2,aes(color=variable))+
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 90, hjust = 1))+
+  labs(title="Banco",
+       subtitle = "Movimiento de los Buenos Pagadores segun el nivel de educación",
+       caption = "Fuente: Banco")
+```
+
+En el caso de los ingresos que tienen los clientes las mujeres son aquellas que más contribuyen a la entidad bancaría con la adquisición de créditos. Sin embargo, existe una gran cantidad de hombres que adquieren créditos. 
+En el caso de la cantidad de años que el cliente lleva de empleo en su trabajo las mujeres que pertenecen a la entidad son quienes mayor experiencia laboral y años de trabajo tienen en comparación a los hombres.
+Según la tasa de deuda sobre los ingresos de los clientes el banco no presenta ningún favoritismo. Es decir, tanto hombres como mujeres tienen las mismas tasas.
+Mientras que la deuda con la tarjeta de crédito que tienen los clientes. Las mujeres son quienes mayor nivel de deuda presentan ante los hombres.
+
+# Aplicación De Árboles de Decisión
+
+En el campo del aprendizaje automático, hay distintas maneras de obtener árboles de decisión, la que usaremos en esta ocasión es conocida como CART: Classification And Regression Trees. Esta es una técnica de aprendizaje supervisado. Tenemos una variable objetivo (dependiente) y nuestra meta es obtener una función que nos permita predecir, a partir de variables predictoras (independientes), el valor de la variable objetivo para casos desconocidos.
+
+## Desarrollo
+
+Haciendo uso del software R se elabora una partición de la muestra de 700 datos a dos bases de datos, la primera una base de entrenamiento y la segunda de evaluación o prueba. La partición realizada se encuentra en relación (80\%-20\%)
+
+
+
+La función a utilizar para particionar la base de datos es la siguiente:
+```{r}
+create_train_test <- function(data, size = 0.8, train = TRUE) {
+    n_row = nrow(data)
+    total_row = size * n_row
+    train_sample <-  1: total_row
+    if (train == TRUE) {
+        return (data[train_sample, ])
+    } else {
+        return (data[-train_sample, ])
+    }
+}
+```
+
+Una vez particionada la base de datos, es necesario realizar una visualización en cada una de ellas:
+
+
+
+
+```{r echo=FALSE}
+
+
+
+data_train <- create_train_test(Data, 0.8, train = TRUE)
+
+
+data_test <- create_train_test(Data, 0.8, train = FALSE)
+
+prop.table(table(data_train$impago))# para ver si se repartió bien
+
+
+
+
+
+```
+Como se observa se tiene que para la base de entrenamiento que representa un 80\% de la base de datos total , al rededor del 74\%, son clientes que no registran impagos en sus créditos y un 26\% de clientes registra que son impagos en sus créditos.
+
+```{r echo=FALSE}
+prop.table(table(data_test$impago))
+```
+
+Para la base de datos de prueba que equivale a un 20\% de la base de datos total, se registra alrededor de un 72\% de clientes que no se registran como impagos en sus créditos y un 27\% de clientes que se registran como imgpaos en sus créditos.
+
+En conlclusión en los resultados anteriores, se ve que las dos bases de datos, tanto la de entrenamiento como la de prueba, se encuentran repartidas equitativamente, por lo que se procede a la realización del modelo de árbol de decisión.
+
+
+## Construcción del Modelo
+
+Como se nombró anteriormente, se aplicará  la técnica supervisada Cart, como la variable impago es nominal, entonces el método para el árbol de desición es la clasificación, por tanto como se tiene una base de 850 datos, de los cuáles 700 datos se usará para construir el modelo de árbol de decisión, y finalmente, se tratrá de utilizar dicho modelo, para predecir los 150 datos restantes.
+
+
+## Entrenamiento del Modelo
+
+Se usa  la función rpart  para entrenar el modelo. Esta función  pide una formula para especificar la variable objetivo de la clasificación. La formula que se usará es impago ~ ., la cual expresa que se intentará clasificar la variable impago usando a todas las demás variables como predictoras. En este caso se usa la data de entrenamiento.
+
+
+```{r echo=FALSE}
+fit <- rpart (impago ~., data = data_train, method = 'class') 
+fit
+
+```
+
+
+Lo anterior muestra el esquema de el árbol de clasificación. Cada inciso nos indica un nodo y la regla de clasificación que le corresponde. Siguiendo estos nodos, se puede llegar a las hojas del árbol, que corresponde a la clasificación de los datos.
+
+Para una mejor interpretración del resultado anterior, se tiene el siguiente gráfico:
+
+```{r echo=FALSE}
+rpart.plot (fit, extra = 106)
+```
+
+La interpretación del árbol de desición es la siguiente:
+
+* Para el nodo raíz se tiene que la probabilidad de que un cliente sea buen pagador es del 26\%, de ahí pregunta si es que la deuda ingreso es menor o igual a 12, si la respuesta es afirmativa, estos clientes tienen un porcentaje del 15\% de ser buenos pagadores.
+
+* Para el caso de que la respuesta se que las deudas ingresos sean mayor o igual a 12 existe un 48\% de que los clientes sean buenos pagadores, pero de estos clientes que tienen su deudas de ingresos mayor a 12 y los años que trabaja en el mismo empleo mayor o iguala 10 el porcentaje de que sea buen pagador es de 29\%, de estos clientes si poseen una deuda de crédito menor a 5.4, el porcentaje de ser buenos pagadores es de 21\%, y caso contrario, es decir si tienen una deuda de crédito mayor a 5.4, el porcentaje de ser malos pagadores es de 72\%.
+
+* Otra conclusión importante que se puede ver es que si los clientes son de género masculino, el porcentaje de que sean malos pagadores es del 71\%.
+
+## Predicción
+
+Una vez que se tiene el modelo del árbol de clasificación, se procede a realizar las predicciones. Para ello la función precict() con el conjunto de datos de evaluación o prueba definido anteriormente para generar un vector con los valores predichos por el modelo que se ha entrenado, es necesario especificar el parámetro type = "class".
+
+
+```{r echo=FALSE}
+predict_unseen <-predict(fit, data_test, type = 'class')
+confusionMatrix(predict_unseen, data_test[["impago"]])
+
+
+#table_mat <- table(data_test$impago, predict_unseen)
+#table_mat
+```
+
+Donde se obtiene lo siguiente:
+
+* En primer lugar se observa la matriz de confusión donde bajo el modelo de árbol de clasificación, el modelo ha calificado como buenos a 91 clientes que en efecto coincidían con ser buenos clientes, sin embargo el modelo se equivoca dando falsos positivos para 22 clientes es decir, las características de estos 22 clientes hacen que el modelo  propuesto los califique como buenos sin embargo eran clientes que entraron en mora. Por otra parte, el modelo considera 27 clientes como malos pagadores de los cuales: 10 resultaron ser buenos clientes y los 17 restantes en efecto coincidieron en ser malos clientes.
+
+* Se tiene un  acurracy de 74\% lo que quiere decir que existe un porcentaje aceptable de datos que están clasificadas correctamente por el modelo, es decir el modelo es bueno para clasificar.
+
+* La capacidad para etiquetar correctamente la clase positiva es del 90\%, esto es la sensibilidad, es decir que la proporción de buenos clientes el modelo los clasificó como buenos pagadores, en cambio el modelo tiene una especificidad de 40\%, lo que significa que puede reconocer con poca precisión a los malos clientes.
+
+De manera general, el modelo es aceptable para predecir, pero se puede aplicar una técnica para mejorar el modelo, a continuación se detalla.
+
+
+
+# Mejora del modelo
+
+## Random Forest
+
+Random Forest es una combinación de árboles predictivos; es decir, una modificación del Bagging, el cual trabaja con una colección de árboles incorrelacionados y los promedia, en el cual se tiene que cada árbol depende de los valores de un vector aleatorio de la muestra de manera independiente y con la misma distribución de todos los árboles en el bosque. 
+
+Para la aplicación en este trabajo de igual manera se usa las dos bases de entrenamiento y prueba, es necesario recalcar que para sacar el modelo se usa la función randomForest(impago~., data=data_train) y se obtiene lo siguiente:
+
+```{r echo=FALSE}
+
+modelo <- randomForest(impago~., data=data_train)
+modelo
+
+
+```
+La estimación de la tasa de error OOB es calculada a partir de las observaciones
+fuera de la bolsa. La estimación del error sugiere que cuando el modelo sea
+aplicado a nuevas observaciones, las respuestas tendrán un error de 21,15 \%;
+también puede decirse que el modelo es 78,75\% % exacto; entonces, el modelo es bueno.
+
+```{r echo=FALSE}
+#plot(modelo, main="Tasa de error del Random Forest")
+
+plot(modelo)
+legend("topleft",col=1:3,lty=1:3,
+ legend=c("OOB",levels(data_train$impago)),cex=0.7)
+grid()
+```
+
+Para cada clase de la variable clasificadora también se halla el error de clasificación. Se observa que para las muestras de clientes clasificados como no impago presentan un error de clasificación de tan solo el 9\%, esto es, nuestro modelo Random Forest clasifica muy bien a los clientes que no tienen deudas en sus créditos ; mientras que para el caso de los clientes que se clasifican como impagos se presenta un error de clasificación mayor de 60 \%, esto quiere decir que el modelo no clasifica bien a los clientes que tienen deudas en sus créditos.
+
+
+## Validación del Modelo
+
+Para hacer la validación del modelo, se procede a generar la matriz de confusión con
+la data de prueba o data de validación. 
+
+```{r echo=FALSE}
+# Hacer predicciones
+prediccionesp <- predict(modelo, data_test)
+confusionMatrix(prediccionesp, data_test[["impago"]])
+
+
+```
+
+Donde se obtiene lo siguiente:
+
+* En primer lugar se observa la matriz de confusión donde bajo el modelo de árbol de clasificación, el modelo ha calificado como buenos a 97 clientes que en efecto coincidían con ser buenos clientes, sin embargo el modelo se equivoca dando falsos positivos para 22 clientes es decir, las características de estos 22 clientes hacen que el modelo  propuesto los califique como buenos sin embargo eran clientes que entraron en mora. Por otra parte, el modelo considera 21 clientes como malos pagadores de los cuales: 4 resultaron ser buenos clientes y los 17 restantes en efecto coincidieron en ser malos clientes, por lo tanto existe una mejora en el modelo aplicado de random forest, que el de árbol de desición
+
+* Se tiene un  acurracy de 81\% lo que quiere decir que existe un porcentaje aceptable de datos que están clasificadas correctamente por el modelo, es decir el modelo es bueno para clasificar.
+
+* La capacidad para etiquetar correctamente la clase positiva es del 96\%, esto es la sensibilidad, es decir que la proporción de buenos clientes el modelo los clasificó como buenos pagadores, en cambio el modelo tiene una especificidad de 44\%, lo que significa que puede reconocer con poca precisión a los malos clientes.
+
+## Medida de Impureza Gini
+
+```{r echo=FALSE}
+modelo$importance
+```
+
+En el resultado anterior, se muestra la medida de impureza gini,  la impureza se refiere a cómo de mezcladas están las clases en cada nodo, es decir, mientras mas cerca del 0 se encuentre, el nodo es totalmente puro, por tanto pertenece a una sola clase, como se observa el nodo de la variable sexo es el más puro para el modelo y le siguie el nodo de la variable ecucación.
+
+## Curva Roc
+
+Es una representación gráfica de la sensibilidad frente a la especificidad para un sistema clasificador binario según se varía el umbral de discriminación. Otra interpretación de este gráfico es la representación de la razón o ratio de verdaderos positivos (VPR = Razón de Verdaderos Positivos) frente a la razón o ratio de falsos positivos (FPR = Razón de Falsos Positivos) también según se varía el umbral
+de discriminación (valor a partir del cual decidimos que un caso es un positivo).
+
+
+Para el modelo se tiene la siguiente gráfica:
+
+```{r echo=FALSE}
+#library(ROCit)
+library(ROCR)
+
+probabi<- predict(modelo, data_test,"prob")[,2]
+prediobj<-prediction(probabi,data_test$impago)
+plot(performance(prediobj, "tpr","fpr"),main="CURVA ROC")
+abline(a=0,b=1,col="blue",lty=2)
+
+auc<- as.numeric(performance(prediobj,"auc")@y.values)
+cat("AUC test= ",auc ,"\n")
+
+```
+
+
+Para el conjunto de datos se ha obtenido un área bajo la curva de 0.83, del cual se
+podría decir que el modelo Random Forest es bueno ya que clasifica al 83 \% los clientes que son no tienen deudas en sus créditos.
+
+
+# Aplicación del Modelo de Random Forest para Predecir 
+
+Ahora, en este paso se procede a predecir los clientes de la base de datos df, la cual contenía información de si los clientes son buenos pagadores o no y se obtuvo lo siguiente:
+
+
+```{r echo=FALSE}
+# predecir nuevos
+
+pronostico <- predict(modelo, df, type="class")
+summary(pronostico)
+#plot(pronostico)
+
+calificacion <- ifelse(pronostico ==1, 1, 0) # Punto de corte en 0.5
+
+nuevo <- df %>% mutate(impago = factor(calificacion,levels = c(0,1),labels = c("No","Sí")))
+
+ggplot(nuevo,aes(x=impago))+geom_bar(fill="dodgerblue3")+
+  labs(y="Apariciones",title = "Nuevas predicciones")
+# ggsave(file="predict_n.eps", plot=p, width=6, height=3,device="eps")
+```
+
+
+
+El modelo clasifica a 125 clientes como buenos pagadores y a 25 clientes como malos pagadores, de las cuales 12 mujeres   y 13 hombres son malos pagadores, por otro lado hay 72 hombres y 53 mujeres que son buenos pagadores.
+
+
+```{r echo=FALSE}
+p <- ggplot(nuevo,aes(x=sexo,fill=impago))+
+  geom_bar()+
+  labs(y="Apariciones",title="Sexo")
+p
+```
+
+Como se observa en la gráfica anterior,con los datos predichos, los hombres tienden a ser malos pagadores, mientras que las mujeres no.
+
+```{r echo=FALSE}
+q <- ggplot(nuevo,aes(x=educ,fill=impago))+
+  geom_bar()+
+  labs(y="Apariciones",title="Educación")
+q
+c4<-nuevo %>% filter(sexo=="F", educ=="2")
+
+```
+
+Por otro lado el nivel de educación influye al momento de ver si las personas son buenas pagadoras o no, en este caso el nivel 2 de educación que equivale a titulo de  bachillerato, también es una variable importante al momento de otorgar un crédito a las personas.
+
+Entonces existen 14 mujeres y 23  hombres con nivel de educación 2, esto quiere decir que por la predicción hecha, los hombres van a tener mas probabilidad de ser malos pagadores, debido a su nivel de educación.
+
+
+```{r echo=FALSE }
+p <- ggplot(nuevo,aes(x=deudacred,fill=sexo))+
+  geom_histogram()+
+  labs(y="Apariciones",title="deudacred")
+
+p
+g<-nuevo %>% filter(sexo=="M") %>% select(deudacred)
+mean(g$deudacred)
+g1<-nuevo %>% filter(sexo=="F") %>% select(deudacred)
+mean(g1$deudacred)
+```
+
+Como se observa la media de deuda de crédito por parte de las mujeres es de \$ 1.12 mil, mientras que por parte de los hombres la media de la deuda de crédito es de \$ 2.11 mil, esta también es una razón por la cual las mujeres on mejores pagadores que los hombres debido a que las mujeres mantienen una deuda de crédito mas baja.
+
+
+# Conclusiones
+
+* El banco tmabién debe tener en cuenta cual es uno de los perfiles de buenos clientes, es decir aquellos que son buenos pagadores, entonces basándonos en el anális de arbol de desición se podría decir los siguentes perfiles:
+
+  * Los clientes lo cuáles poseen una tasa de deuda ingreso menor a 12, estos se consideran como buenos pagadores.
+  * Otro perfil de cliente de buenos pagadores, son aquellos que han permanecido en su puesto de trabajo por mas de 10 años y con una deuda de crédito menor a \$ 5.4 miles
+  * Además se tiene que los hombres que poseen una deuda de créditos menor a \$ 1 .7 miles y que han vivido en la misma dirección por mas de 3 años, se consideran buenos pagadores.
+* La entidad bancaria debería proponer nuevos créditos a las mujeres que posean un nivel de educación mayor a título de bachiller y sus deudas de tarjetas de créditos sean menores a mil dólares, todo esto para minimizar el riesgo crediticio.
+
+* Por otro lado, el banco también debería enfocarse, en hacer una publicidad de marketing, a aquellas personas que tienen el nivel alto de educación, debido a que estos se los considera como buenos pagadores, independientmente de si son hombres o mujeres, para elevar sus ganancias al momento de otorgar los créditos en las personas.
